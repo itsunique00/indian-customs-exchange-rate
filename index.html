@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Indian Customs Exchange Rate Calculator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6">
+  <div class="w-full max-w-2xl bg-white shadow-lg rounded-lg p-6">
+    <h1 class="text-2xl font-semibold text-slate-800 mb-4">Customs Exchange Rate Calculator</h1>
+    <p class="text-sm text-slate-500 mb-6">Calculated using official DGFT rates (import/export). Last updated shown below.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">Currency</label>
+        <select id="currencySelect" class="w-full border rounded px-3 py-2"></select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">Type</label>
+        <div class="flex items-center gap-2">
+          <label class="inline-flex items-center">
+            <input type="radio" name="rateType" value="import" checked class="mr-2"> Import
+          </label>
+          <label class="inline-flex items-center">
+            <input type="radio" name="rateType" value="export" class="mr-2"> Export
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">Amount</label>
+        <input id="amountInput" type="number" min="0" step="any" value="1" class="w-full border rounded px-3 py-2" />
+      </div>
+    </div>
+
+    <div class="bg-slate-50 border rounded p-4 mb-4">
+      <div class="text-sm text-slate-500">Result</div>
+      <div id="result" class="mt-2 text-3xl font-semibold text-slate-800">—</div>
+      <div id="meta" class="mt-2 text-xs text-slate-500"></div>
+    </div>
+
+    <div id="error" class="text-red-600 text-sm"></div>
+
+    <div class="mt-6 flex justify-between items-center">
+      <div class="text-xs text-slate-400">Hosted from this repository's static files.</div>
+      <button id="refreshBtn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">Refresh Rates</button>
+    </div>
+  </div>
+
+  <script>
+    const currencySelect = document.getElementById('currencySelect');
+    const resultEl = document.getElementById('result');
+    const metaEl = document.getElementById('meta');
+    const amountInput = document.getElementById('amountInput');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const errorEl = document.getElementById('error');
+
+    let ratesData = null;
+
+    async function loadRates() {
+      errorEl.textContent = '';
+      try {
+        const resp = await fetch('/static/customs-rates.json', {cache: "no-store"});
+        if (!resp.ok) throw new Error('Failed to fetch rates file: ' + resp.status);
+        ratesData = await resp.json();
+        populateCurrencies();
+        updateUI();
+      } catch (err) {
+        console.error(err);
+        errorEl.textContent = 'Could not load rates. Please check the repository Pages/hosting and that the scraper has run.';
+        resultEl.textContent = '—';
+        metaEl.textContent = '';
+      }
+    }
+
+    function populateCurrencies() {
+      currencySelect.innerHTML = '';
+      const list = Object.keys(ratesData.rates || {});
+      if (list.length === 0) {
+        currencySelect.innerHTML = '<option value="">(no rates available)</option>';
+        return;
+      }
+      for (const c of list) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        currencySelect.appendChild(opt);
+      }
+    }
+
+    function formatNumber(n) {
+      if (n === null || n === undefined) return 'N/A';
+      return new Intl.NumberFormat('en-IN', {maximumFractionDigits: 4}).format(n);
+    }
+
+    function getSelectedRate() {
+      const cur = currencySelect.value;
+      if (!cur || !ratesData) return null;
+      const type = document.querySelector('input[name="rateType"]:checked').value;
+      const entry = ratesData.rates[cur];
+      if (!entry) return null;
+      return type === 'import' ? entry.import_rate_inr : entry.export_rate_inr;
+    }
+
+    function updateUI() {
+      const rate = getSelectedRate();
+      const amount = parseFloat(amountInput.value || '0');
+      if (rate === null || rate === undefined || isNaN(rate)) {
+        resultEl.textContent = 'Rate unavailable';
+      } else {
+        const inr = amount * rate;
+        resultEl.textContent = `₹ ${formatNumber(inr)} INR`;
+      }
+      if (ratesData && ratesData.meta && ratesData.meta.last_updated_at) {
+        metaEl.textContent = `Rates last updated: ${new Date(ratesData.meta.last_updated_at).toLocaleString()}`;
+      } else {
+        metaEl.textContent = 'Rates timestamp not available';
+      }
+    }
+
+    currencySelect.addEventListener('change', updateUI);
+    amountInput.addEventListener('input', updateUI);
+    document.querySelectorAll('input[name="rateType"]').forEach(el => el.addEventListener('change', updateUI));
+    refreshBtn.addEventListener('click', () => loadRates());
+
+    // initial load
+    loadRates();
+  </script>
+</body>
+</html>
